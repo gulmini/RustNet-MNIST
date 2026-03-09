@@ -1,0 +1,87 @@
+use std::{any::Any, marker::PhantomData};
+
+use ndarray::{Array1, Array2, Axis, linalg::Dot};
+
+use crate::layer::{ActivationFn, Layer, LayerGradients};
+
+#[derive(Debug)]
+pub struct DenseLayer<A: ActivationFn> {
+    input_size: usize,
+    output_size: usize,
+    weights: Array2<f64>,
+    biases: Array1<f64>,
+    _marker: PhantomData<A>,
+}
+
+impl<A: ActivationFn> Layer for DenseLayer<A> {
+    fn shape(&self) -> (Option<usize>, Option<usize>) {
+        (Some(self.input_size), Some(self.output_size))
+    }
+
+    fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+        let z = input.dot(&self.weights) + &self.biases;
+        z.mapv(A::f)
+    }
+
+    fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, Box<dyn Any>) {
+        let z = input.dot(&self.weights) + &self.biases;
+        let a = z.mapv(A::f);
+        (a, Box::new((input.clone(), z)))
+    }
+
+    fn backward(
+        &self,
+        grad_output: &Array2<f64>,
+        cache: &dyn Any,
+    ) -> (Array2<f64>, LayerGradients) {
+        let (input, z) = cache.downcast_ref::<(Array2<f64>, Array2<f64>)>().unwrap();
+
+        let delta = grad_output * &z.mapv(A::df);
+        let grad_weights = input.t().dot(&delta);
+        let grad_biases = delta.sum_axis(Axis(0));
+        let grad_input = delta.dot(&self.weights.t());
+
+        (grad_input, LayerGradients::new(grad_weights, grad_biases))
+    }
+
+    fn apply_gradients(&mut self, gradients: &LayerGradients, learning_rate: f64) {
+        if let Some(w_grad) = &gradients.weights {
+            self.weights = &self.weights - &(w_grad * learning_rate);
+        }
+        if let Some(b_grad) = &gradients.biases {
+            self.biases = &self.biases - &(b_grad * learning_rate);
+        }
+    }
+}
+
+impl<A: ActivationFn> DenseLayer<A> {
+    pub fn new(input_size: usize, output_size: usize) -> Self {
+        let weights = Array2::zeros((input_size, output_size));
+        let biases = Array1::zeros(output_size);
+        Self {
+            input_size,
+            output_size,
+            weights,
+            biases,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn new_random(input_size: usize, output_size: usize) -> Self {
+        // He Initialization for Uniform Distribution
+        let limit = (6.0 / input_size as f64).sqrt();
+
+        let weights = Array2::from_shape_fn((input_size, output_size), |_| {
+            (rand::random::<f64>() * 2.0 - 1.0) * limit
+        });
+        let biases = Array1::zeros(output_size);
+
+        Self {
+            input_size,
+            output_size,
+            weights,
+            biases,
+            _marker: PhantomData,
+        }
+    }
+}
