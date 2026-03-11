@@ -1,15 +1,9 @@
-use std::any::Any;
-
-use crate::layer::{Layer, LayerGradients};
+use crate::layer::{Layer, LayerCache, LayerGradients};
+use crate::optimizer::Optimizer;
 use ndarray::Array2;
 
 pub struct Sequential {
-    layers: Vec<Box<dyn Layer>>,
-}
-
-#[derive(Debug)]
-pub struct SequentialTrace {
-    pub layer_caches: Vec<Box<dyn Any>>,
+    layers: Vec<Layer>,
 }
 
 impl Sequential {
@@ -17,16 +11,19 @@ impl Sequential {
         Self { layers: Vec::new() }
     }
 
-    pub fn add_layer(&mut self, layer: Box<dyn Layer>) {
-        // Skip layers with no size
-        let last_known_output = self.layers.iter().rev().find_map(|l| l.shape().1);
+    pub fn add(&mut self, layer: Layer) {
+        // If the new layer has a specific input size requirement...
+        if let Some(new_input_size) = layer.input_size() {
+            // Find the output size of the most recently added layer that has a fixed output size
+            let last_output_size = self.layers.iter().rev().find_map(|l| l.output_size());
 
-        if let (Some(out_size), Some(in_size)) = (last_known_output, layer.shape().0) {
-            assert_eq!(
-                out_size, in_size,
-                "layer size mismatch: previous output size {}, new layer input size {}",
-                out_size, in_size
-            );
+            if let Some(expected_size) = last_output_size {
+                assert_eq!(
+                    expected_size, new_input_size,
+                    "Architecture Mismatch: Cannot add layer with input size {} after a layer with output size {}",
+                    new_input_size, expected_size
+                );
+            }
         }
 
         self.layers.push(layer);
@@ -38,31 +35,29 @@ impl Sequential {
             .fold(input.to_owned(), |acc, layer| layer.forward(&acc))
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, SequentialTrace) {
+    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, Vec<LayerCache>) {
         let mut current_input = input.clone();
-        let mut trace = SequentialTrace {
-            layer_caches: Vec::new(),
-        };
+        let mut caches = Vec::with_capacity(self.layers.len());
 
         for layer in &self.layers {
             let (output, cache) = layer.forward_training(&current_input);
             current_input = output;
-            trace.layer_caches.push(cache);
+            caches.push(cache);
         }
 
-        (current_input, trace)
+        (current_input, caches)
     }
 
     pub fn backward(
         &self,
         grad_output: &Array2<f64>,
-        trace: &SequentialTrace,
+        caches: &[LayerCache],
     ) -> Vec<LayerGradients> {
         let mut current_grad = grad_output.clone();
-        let mut all_grads = Vec::new();
+        let mut all_grads = Vec::with_capacity(self.layers.len());
 
-        for (layer, cache) in self.layers.iter().zip(&trace.layer_caches).rev() {
-            let (prev_grad, layer_grads) = layer.backward(&current_grad, cache.as_ref());
+        for (layer, cache) in self.layers.iter().zip(caches).rev() {
+            let (prev_grad, layer_grads) = layer.backward(&current_grad, cache);
             current_grad = prev_grad;
             all_grads.push(layer_grads);
         }
@@ -71,9 +66,9 @@ impl Sequential {
         all_grads
     }
 
-    pub fn apply_gradients(&mut self, gradients: Vec<LayerGradients>, learning_rate: f64) {
+    pub fn apply_gradients(&mut self, gradients: &[LayerGradients], optimizer: &mut dyn Optimizer) {
         for (layer, grad) in self.layers.iter_mut().zip(gradients.iter()) {
-            layer.apply_gradients(grad, learning_rate);
+            layer.apply_gradients(grad, optimizer);
         }
     }
 }

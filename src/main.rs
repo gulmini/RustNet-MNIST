@@ -1,135 +1,111 @@
 mod layer;
 mod loader;
+mod loss;
+mod optimizer;
 mod sequential;
 mod visualizer;
-use ndarray::{Array1, Array2, Axis, stack};
+
+use ndarray::{Array2, Axis};
 use ndarray_stats::QuantileExt;
-use rand;
-
-use loader::MnistDataset;
-
 use rand::seq::SliceRandom;
-// use visualizer::visualize_image; // Unused but kept for your debugging
 
+use layer::Layer;
+use layer::activation_layer::{Activation, ActivationLayer};
 use layer::dense_layer::DenseLayer;
 use layer::dropout_layer::DropoutLayer;
-use layer::{Identity, LeakyReLU};
+use loader::MnistDataset;
+use loss::cross_entropy_with_logits;
+use optimizer::SGD;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let training_images = MnistDataset::load(
+    let training_data = MnistDataset::load(
         "dataset/train-images-idx3-ubyte",
         "dataset/train-labels-idx1-ubyte",
-    )?
-    .images;
+    )?;
 
-    let test_images = MnistDataset::load(
+    let test_data = MnistDataset::load(
         "dataset/t10k-images-idx3-ubyte",
         "dataset/t10k-labels-idx1-ubyte",
-    )?
-    .images;
+    )?;
+
+    println!("Training data loaded");
 
     let mut model = sequential::Sequential::new();
 
-    let layer1 = DenseLayer::<LeakyReLU>::new_random(784, 512);
-    let dropout1 = DropoutLayer::new(0.2);
-    let layer2 = DenseLayer::<LeakyReLU>::new_random(512, 256);
-    let dropout2 = DropoutLayer::new(0.2);
-    let layer3 = DenseLayer::<Identity>::new_random(256, 10);
+    // Layer 1
+    model.add(Layer::Dense(DenseLayer::new_random(784, 512)));
+    model.add(Layer::Activation(ActivationLayer::new(
+        Activation::LeakyReLU,
+    )));
+    model.add(Layer::Dropout(DropoutLayer::new(0.2)));
 
-    model.add_layer(Box::new(layer1));
-    model.add_layer(Box::new(dropout1));
-    model.add_layer(Box::new(layer2));
-    model.add_layer(Box::new(dropout2));
-    model.add_layer(Box::new(layer3));
+    // Layer 2
+    model.add(Layer::Dense(DenseLayer::new_random(512, 256)));
+    model.add(Layer::Activation(ActivationLayer::new(
+        Activation::LeakyReLU,
+    )));
+    model.add(Layer::Dropout(DropoutLayer::new(0.2)));
 
-    let mut training_images = training_images
-        .iter()
-        .map(|img| {
-            (
-                Array1::from_vec(img.data.iter().map(|&b| b as f64 / 255.0).collect()),
-                img.label,
-            )
-        })
-        .collect::<Vec<(Array1<f64>, u8)>>();
+    // Layer 3 (Output logits, Softmax handled by loss function)
+    model.add(Layer::Dense(DenseLayer::new_random(256, 10)));
 
-    let test_images = test_images
-        .iter()
-        .map(|img| {
-            (
-                Array1::from_vec(img.data.iter().map(|&b| b as f64 / 255.0).collect()),
-                img.label,
-            )
-        })
-        .collect::<Vec<(Array1<f64>, u8)>>();
+    let epochs = 20;
+    let batch_size = 128;
+    let mut optimizer = SGD::new(0.1);
 
-    let epochs = 30;
-    let batch_size = 64;
-    let mut learning_rate = 0.1;
+    let n_samples = training_data.images.nrows();
+    let mut indices: Vec<usize> = (0..n_samples).collect();
 
     for e in 0..epochs {
-        for batch in training_images.chunks(batch_size) {
-            let batch_len = batch.len() as f64;
+        indices.shuffle(&mut rand::rng());
 
-            let batch_inputs = stack(
-                Axis(0),
-                &batch
-                    .iter()
-                    .map(|(data, _)| data.view())
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap();
+        for batch_indices in indices.chunks(batch_size) {
+            let batch_len = batch_indices.len();
 
-            let targets = Array2::from_shape_fn((batch.len(), 10), |(i, j)| {
-                if batch[i].1 as usize == j { 1.0 } else { 0.0 }
-            });
+            let mut batch_inputs = Array2::<f64>::zeros((batch_len, 784));
+            let mut targets = Array2::<f64>::zeros((batch_len, 10));
 
-            let (output, trace) = model.forward_training(&batch_inputs);
+            for (i, &idx) in batch_indices.iter().enumerate() {
+                batch_inputs
+                    .row_mut(i)
+                    .assign(&training_data.images.row(idx));
+                let label = training_data.labels[idx];
+                targets[[i, label]] = 1.0;
+            }
 
-            let max_per_row = output.map_axis(Axis(1), |row| {
-                row.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-            });
-            let shifted = &output - &max_per_row.insert_axis(Axis(1));
-            let exp_scores = shifted.mapv(|x| x.exp());
-            let sum_exp = exp_scores.sum_axis(Axis(1));
-            let probabilities = &exp_scores / &sum_exp.insert_axis(Axis(1));
+            let (output, caches) = model.forward_training(&batch_inputs);
 
-            // Correct Cross Entropy Loss calculation. Epsilon added to avoid log(0).
-            let epsilon = 1e-8;
-            let loss = -(&targets * &probabilities.mapv(|p| (p + epsilon).ln())).sum() / batch_len;
+            // Clean Loss Abstraction
+            let (_loss, loss_grad) = cross_entropy_with_logits(&output, &targets);
 
-            // println!("average loss: {:.4}", loss);
-
-            let loss_grad = (&probabilities - &targets) / batch_len;
-            let gradients = model.backward(&loss_grad, &trace);
-            model.apply_gradients(gradients, learning_rate);
+            let gradients = model.backward(&loss_grad, &caches);
+            model.apply_gradients(&gradients, &mut optimizer);
         }
-        learning_rate *= 0.99;
+
+        optimizer.learning_rate *= 0.99;
         println!(
             "epoch {} complete. learning_rate {:.5}",
             e + 1,
-            learning_rate
+            optimizer.learning_rate
         );
-        training_images.shuffle(&mut rand::rng());
     }
 
     let mut misclassifications: usize = 0;
     let test_batch_size = 256;
+    let n_test = test_data.images.nrows();
 
-    for batch in test_images.chunks(test_batch_size) {
-        let batch_inputs = stack(
-            Axis(0),
-            &batch
-                .iter()
-                .map(|(data, _)| data.view())
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
+    for start in (0..n_test).step_by(test_batch_size) {
+        let end = (start + test_batch_size).min(n_test);
+        let batch_inputs = test_data
+            .images
+            .slice(ndarray::s![start..end, ..])
+            .to_owned();
 
         let predictions = model.forward(&batch_inputs);
 
         for (i, row) in predictions.axis_iter(Axis(0)).enumerate() {
             let prediction = row.argmax().unwrap();
-            if prediction != batch[i].1 as usize {
+            if prediction != test_data.labels[start + i] {
                 misclassifications += 1;
             }
         }
@@ -137,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "Error Rate: {:.2}%",
-        (misclassifications as f64 / test_images.len() as f64) * 100.0
+        (misclassifications as f64 / n_test as f64) * 100.0
     );
 
     Ok(())
