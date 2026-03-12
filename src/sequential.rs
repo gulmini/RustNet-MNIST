@@ -38,6 +38,7 @@ impl Sequential {
             .fold(input.to_owned(), |acc, layer| layer.forward(&acc))
     }
 
+    // Forward pass with caching of pre-activation values
     pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, SequentialTrace) {
         let mut current_input = input.clone();
         let mut trace = SequentialTrace {

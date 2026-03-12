@@ -1,6 +1,17 @@
 use std::fs::File;
 use std::io::{self, BufReader, Read};
 
+/*
+ * IDX File Format Reference:
+ * [offset] [type]          [value]          [description]
+ * 0000     32 bit integer  0x00000801(2049) magic number (1D - labels)
+ * 0000     32 bit integer  0x00000803(2051) magic number (3D - images)
+ * 0004     32 bit integer  60000            number of items
+ * 0008     32 bit integer  28               number of rows (images only)
+ * 0012     32 bit integer  28               number of columns (images only)
+ * nnnn     unsigned byte   ??               pixel/label data
+ */
+
 #[derive(Debug)]
 pub struct MnistImage {
     pub data: Vec<u8>,
@@ -15,70 +26,64 @@ pub struct MnistDataset {
 
 impl MnistDataset {
     pub fn load(image_path: &str, label_path: &str) -> io::Result<Self> {
-        let images_data = Self::read_idx_file(image_path)?;
-        let labels_data = Self::read_idx_file(label_path)?;
+        let images_idx = IdxData::read(image_path)?;
+        let labels_idx = IdxData::read(label_path)?;
 
-        // Validate magic numbers (Image magic: 2051, Label magic: 2049)
-        if images_data.magic != 2051 {
+        // Validation
+        if images_idx.magic != 2051 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Invalid image file magic number",
+                "Invalid image magic number",
             ));
         }
-        if labels_data.magic != 2049 {
+        if labels_idx.magic != 2049 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Invalid label file magic number",
+                "Invalid label magic number",
             ));
         }
 
-        // Parse dimensions
-        let count = images_data.sizes[0];
-        let rows = images_data.sizes[1];
-        let cols = images_data.sizes[2];
+        let count = images_idx.sizes[0];
+        let rows = images_idx.sizes[1];
+        let cols = images_idx.sizes[2];
 
-        let label_count = labels_data.sizes[0];
-
-        if count != label_count {
+        if count != labels_idx.sizes[0] {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Image and label counts do not match",
+                "Mismatched image/label counts",
             ));
         }
 
         let image_size = (rows * cols) as usize;
-        let mut result = Vec::with_capacity(count as usize);
 
-        // Chunk the raw bytes into individual images and zip with labels
-        for (i, chunk) in images_data.data.chunks(image_size).enumerate() {
-            if i >= count as usize {
-                break;
-            }
-
-            result.push(MnistImage {
+        // Map data into MnistImage structs
+        let images = images_idx
+            .data
+            .chunks_exact(image_size)
+            .take(count as usize)
+            .zip(labels_idx.data.iter())
+            .map(|(chunk, &label)| MnistImage {
                 data: chunk.to_vec(),
-                label: labels_data.data[i],
-            });
-        }
+                label,
+            })
+            .collect();
 
-        Ok(MnistDataset {
-            images: result,
-            rows,
-            cols,
-        })
+        Ok(MnistDataset { images, rows, cols })
     }
+}
 
-    // Generic helper to read IDX files
-    fn read_idx_file(path: &str) -> io::Result<IdxData> {
-        let f = File::open(path)?;
-        let mut reader = BufReader::new(f);
+struct IdxData {
+    magic: u32,
+    sizes: Vec<u32>,
+    data: Vec<u8>,
+}
 
-        // 1. Read Magic Number
+impl IdxData {
+    fn read(path: &str) -> io::Result<Self> {
+        let mut reader = BufReader::new(File::open(path)?);
+
         let magic = read_u32(&mut reader)?;
-
-        // 2. Parse dimensions based on magic number
-        // The 3rd byte of magic number tells us how many dimensions (sizes) follow
-        // e.g., 0x08 0x03 means data type 08 (unsigned byte) and 3 dimensions (N, Rows, Cols)
+        // Last byte of magic number defines the number of dimensions
         let dim_count = (magic & 0xFF) as usize;
 
         let mut sizes = Vec::with_capacity(dim_count);
@@ -86,7 +91,6 @@ impl MnistDataset {
             sizes.push(read_u32(&mut reader)?);
         }
 
-        // 3. Read the rest of the data
         let mut data = Vec::new();
         reader.read_to_end(&mut data)?;
 
@@ -94,14 +98,7 @@ impl MnistDataset {
     }
 }
 
-// Intermediate struct to hold raw file data
-struct IdxData {
-    magic: u32,
-    sizes: Vec<u32>,
-    data: Vec<u8>,
-}
-
-// Helper to read Big Endian u32
+#[inline]
 fn read_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     let mut buffer = [0u8; 4];
     reader.read_exact(&mut buffer)?;

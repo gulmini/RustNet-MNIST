@@ -5,12 +5,7 @@ edition = "2024"
 
 [dependencies]
 colored = "3.1.1"
-crossterm = "0.29.0"
-eframe = "0.33.3"
-indicatif = "0.18.4"
 ndarray = "0.17.2"
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
 rand = "0.10.0"
-ratatui = "0.30.0"
-textplots = "0.8.7"

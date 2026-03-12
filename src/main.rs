@@ -9,7 +9,7 @@ use rand;
 use loader::MnistDataset;
 
 use rand::seq::SliceRandom;
-// use visualizer::visualize_image; // Unused but kept for your debugging
+// use visualizer::visualize_image;
 
 use layer::dense_layer::DenseLayer;
 use layer::dropout_layer::DropoutLayer;
@@ -62,6 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect::<Vec<(Array1<f64>, u8)>>();
 
+    // Naive SGD with mini-batching, trained over many epochs with reshuffling
     let epochs = 30;
     let batch_size = 64;
     let mut learning_rate = 0.1;
@@ -88,14 +89,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let max_per_row = output.map_axis(Axis(1), |row| {
                 row.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
             });
+
+            // Probabilities expressed as Softmax of output
             let shifted = &output - &max_per_row.insert_axis(Axis(1));
             let exp_scores = shifted.mapv(|x| x.exp());
             let sum_exp = exp_scores.sum_axis(Axis(1));
             let probabilities = &exp_scores / &sum_exp.insert_axis(Axis(1));
 
-            // Correct Cross Entropy Loss calculation. Epsilon added to avoid log(0).
             let epsilon = 1e-8;
-            let loss = -(&targets * &probabilities.mapv(|p| (p + epsilon).ln())).sum() / batch_len;
+            let _loss = -(&targets * &probabilities.mapv(|p| (p + epsilon).ln())).sum() / batch_len;
 
             // println!("average loss: {:.4}", loss);
 
@@ -112,6 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         training_images.shuffle(&mut rand::rng());
     }
 
+    // Validation
     let mut misclassifications: usize = 0;
     let test_batch_size = 256;
 
