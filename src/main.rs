@@ -29,7 +29,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .images;
 
     let mut model = sequential::Sequential::new();
-
     let layer1 = DenseLayer::<LeakyReLU>::new_random(784, 512);
     let dropout1 = DropoutLayer::new(0.2);
     let layer2 = DenseLayer::<LeakyReLU>::new_random(512, 256);

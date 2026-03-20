@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub mod dense_layer;
 pub mod dropout_layer;
 

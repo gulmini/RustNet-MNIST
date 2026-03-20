@@ -20,8 +20,6 @@ pub struct MnistImage {
 
 pub struct MnistDataset {
     pub images: Vec<MnistImage>,
-    pub rows: u32,
-    pub cols: u32,
 }
 
 impl MnistDataset {
@@ -68,7 +66,7 @@ impl MnistDataset {
             })
             .collect();
 
-        Ok(MnistDataset { images, rows, cols })
+        Ok(MnistDataset { images })
     }
 }
 
