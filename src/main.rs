@@ -77,8 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .map(|(data, _)| data.view())
                     .collect::<Vec<_>>(),
-            )
-            .unwrap();
+            )?;
 
             let targets = Array2::from_shape_fn((batch.len(), 10), |(i, j)| {
                 if batch[i].1 as usize == j { 1.0 } else { 0.0 }
@@ -125,13 +124,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .iter()
                 .map(|(data, _)| data.view())
                 .collect::<Vec<_>>(),
-        )
-        .unwrap();
+        )?;
 
         let predictions = model.forward(&batch_inputs);
 
         for (i, row) in predictions.axis_iter(Axis(0)).enumerate() {
-            let prediction = row.argmax().unwrap();
+            let prediction = row.argmax()?;
             if prediction != batch[i].1 as usize {
                 misclassifications += 1;
             }
