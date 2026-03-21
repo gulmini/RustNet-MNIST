@@ -19,8 +19,8 @@ pub enum LayerCache {
 
 pub enum LayerGradients {
     Dense {
-        weights: Array2<f64>,
-        biases: Array1<f64>,
+        weights: Array2<f32>,
+        biases: Array1<f32>,
     },
     None,
 }
@@ -40,7 +40,7 @@ impl Layer {
         }
     }
 
-    pub fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         match self {
             Layer::Dense(l) => l.forward(input),
             Layer::Activation(l) => l.forward(input),
@@ -48,7 +48,7 @@ impl Layer {
         }
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, LayerCache) {
+    pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, LayerCache) {
         match self {
             Layer::Dense(l) => {
                 let (out, cache) = l.forward_training(input);
@@ -67,9 +67,9 @@ impl Layer {
 
     pub fn backward(
         &self,
-        grad_output: &Array2<f64>,
+        grad_output: &Array2<f32>,
         cache: &LayerCache,
-    ) -> (Array2<f64>, LayerGradients) {
+    ) -> (Array2<f32>, LayerGradients) {
         match (self, cache) {
             (Layer::Dense(l), LayerCache::Dense(c)) => l.backward(grad_output, c),
             (Layer::Activation(l), LayerCache::Activation(c)) => l.backward(grad_output, c),
@@ -78,9 +78,21 @@ impl Layer {
         }
     }
 
-    pub fn apply_gradients(&mut self, gradients: &LayerGradients, optimizer: &mut dyn Optimizer) {
+    pub fn apply_gradients(
+        &mut self,
+        layer_id: usize,
+        gradients: &LayerGradients,
+        optimizer: &mut dyn Optimizer,
+    ) {
         if let (Layer::Dense(l), LayerGradients::Dense { weights, biases }) = (self, gradients) {
-            l.apply_gradients(weights, biases, optimizer);
+            l.apply_gradients(layer_id, weights, biases, optimizer);
+        }
+    }
+
+    pub fn l2_loss(&self) -> f32 {
+        match self {
+            Layer::Dense(l) => l.l2_loss(),
+            _ => 0.0, // Activations and Dropout don't have L2 loss
         }
     }
 }

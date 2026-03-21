@@ -1,5 +1,7 @@
+#![allow(dead_code)]
 use crate::layer::LayerGradients;
-use ndarray::Array2;
+use ndarray::parallel::prelude::*;
+use ndarray::{Array2, Zip}; // Import Rayon
 
 #[derive(Clone, Debug)]
 pub enum Activation {
@@ -13,7 +15,7 @@ pub struct ActivationLayer {
 }
 
 pub struct ActivationCache {
-    input: Array2<f64>, // Pre-activation values
+    input: Array2<f32>, // Pre-activation values
 }
 
 impl ActivationLayer {
@@ -21,15 +23,23 @@ impl ActivationLayer {
         Self { activation }
     }
 
-    pub fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         match self.activation {
-            Activation::ReLU => input.mapv(|x| x.max(0.0)),
-            Activation::LeakyReLU => input.mapv(|x| if x > 0.0 { x } else { 0.01 * x }),
+            Activation::ReLU => {
+                let mut output = input.clone();
+                output.par_mapv_inplace(|x| x.max(0.0));
+                output
+            }
+            Activation::LeakyReLU => {
+                let mut output = input.clone();
+                output.par_mapv_inplace(|x| if x > 0.0 { x } else { 0.01 * x });
+                output
+            }
             Activation::Identity => input.clone(),
         }
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, ActivationCache) {
+    pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, ActivationCache) {
         let output = self.forward(input);
         (
             output,
@@ -41,26 +51,32 @@ impl ActivationLayer {
 
     pub fn backward(
         &self,
-        grad_output: &Array2<f64>,
+        grad_output: &Array2<f32>,
         cache: &ActivationCache,
-    ) -> (Array2<f64>, LayerGradients) {
+    ) -> (Array2<f32>, LayerGradients) {
         let grad_input = match self.activation {
             Activation::ReLU => {
                 let mut g = grad_output.clone();
-                g.zip_mut_with(&cache.input, |go, &x| {
-                    if x <= 0.0 {
-                        *go = 0.0;
-                    }
-                });
+                Zip::from(&mut g)
+                    .and(&cache.input)
+                    .into_par_iter()
+                    .for_each(|(go, &x)| {
+                        if x <= 0.0 {
+                            *go = 0.0;
+                        }
+                    });
                 g
             }
             Activation::LeakyReLU => {
                 let mut g = grad_output.clone();
-                g.zip_mut_with(&cache.input, |go, &x| {
-                    if x <= 0.0 {
-                        *go *= 0.01;
-                    }
-                });
+                Zip::from(&mut g)
+                    .and(&cache.input)
+                    .into_par_iter()
+                    .for_each(|(go, &x)| {
+                        if x <= 0.0 {
+                            *go *= 0.01;
+                        }
+                    });
                 g
             }
             Activation::Identity => grad_output.clone(),

@@ -29,13 +29,13 @@ impl Sequential {
         self.layers.push(layer);
     }
 
-    pub fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         self.layers
             .iter()
             .fold(input.to_owned(), |acc, layer| layer.forward(&acc))
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, Vec<LayerCache>) {
+    pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, Vec<LayerCache>) {
         let mut current_input = input.clone();
         let mut caches = Vec::with_capacity(self.layers.len());
 
@@ -50,7 +50,7 @@ impl Sequential {
 
     pub fn backward(
         &self,
-        grad_output: &Array2<f64>,
+        grad_output: &Array2<f32>,
         caches: &[LayerCache],
     ) -> Vec<LayerGradients> {
         let mut current_grad = grad_output.clone();
@@ -67,8 +67,15 @@ impl Sequential {
     }
 
     pub fn apply_gradients(&mut self, gradients: &[LayerGradients], optimizer: &mut dyn Optimizer) {
-        for (layer, grad) in self.layers.iter_mut().zip(gradients.iter()) {
-            layer.apply_gradients(grad, optimizer);
+        optimizer.step();
+
+        // Enumerate provides stable `layer_id`
+        for (layer_id, (layer, grad)) in self.layers.iter_mut().zip(gradients.iter()).enumerate() {
+            layer.apply_gradients(layer_id, grad, optimizer);
         }
+    }
+
+    pub fn l2_loss(&self) -> f32 {
+        self.layers.iter().map(|layer| layer.l2_loss()).sum()
     }
 }

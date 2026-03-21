@@ -3,10 +3,8 @@ use std::fs::File;
 use std::io::{self, BufReader, Read};
 
 pub struct MnistDataset {
-    pub images: Array2<f64>,
+    pub images: Array2<f32>,
     pub labels: Array1<usize>,
-    pub rows: u32,
-    pub cols: u32,
 }
 
 impl MnistDataset {
@@ -31,20 +29,15 @@ impl MnistDataset {
         }
 
         // Direct stream into flat contiguous memory. Eliminates 60k vector allocations.
-        let f64_data: Vec<f64> = images_data.data.iter().map(|&b| b as f64 / 255.0).collect();
-        let images = Array2::from_shape_vec((count, image_size), f64_data)
+        let f32_data: Vec<f32> = images_data.data.iter().map(|&b| b as f32 / 255.0).collect();
+        let images = Array2::from_shape_vec((count, image_size), f32_data)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Image shape error"))?;
 
         let usize_labels: Vec<usize> = labels_data.data.iter().map(|&b| b as usize).collect();
         let labels = Array1::from_shape_vec(count, usize_labels)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Label shape error"))?;
 
-        Ok(MnistDataset {
-            images,
-            labels,
-            rows,
-            cols,
-        })
+        Ok(MnistDataset { images, labels })
     }
 
     fn read_idx_file(path: &str) -> io::Result<IdxData> {

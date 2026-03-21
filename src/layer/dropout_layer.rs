@@ -5,15 +5,15 @@ use rand_distr::Bernoulli;
 
 #[derive(Debug)]
 pub struct DropoutLayer {
-    drop_probability: f64,
+    drop_probability: f32,
 }
 
 pub struct DropoutCache {
-    mask: Option<Array2<f64>>,
+    mask: Option<Array2<f32>>,
 }
 
 impl DropoutLayer {
-    pub fn new(drop_probability: f64) -> Self {
+    pub fn new(drop_probability: f32) -> Self {
         assert!(
             drop_probability >= 0.0 && drop_probability < 1.0,
             "Dropout probability must be in [0, 1)"
@@ -21,20 +21,20 @@ impl DropoutLayer {
         Self { drop_probability }
     }
 
-    pub fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         input.clone()
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, DropoutCache) {
+    pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, DropoutCache) {
         if self.drop_probability == 0.0 {
             return (input.clone(), DropoutCache { mask: None });
         }
 
         let keep_prob = 1.0 - self.drop_probability;
         let scale = 1.0 / keep_prob;
-        let dist = Bernoulli::new(keep_prob).unwrap();
+        let dist = Bernoulli::new(keep_prob.into()).unwrap();
 
-        // Vectorized boolean mask generation directly translated to f64 mask map
+        // Vectorized boolean mask generation directly translated to f32 mask map
         let mask = Array2::random(input.raw_dim(), dist).mapv(|b| if b { 1.0 } else { 0.0 });
 
         let output = input * &mask * scale;
@@ -43,9 +43,9 @@ impl DropoutLayer {
 
     pub fn backward(
         &self,
-        grad_output: &Array2<f64>,
+        grad_output: &Array2<f32>,
         cache: &DropoutCache,
-    ) -> (Array2<f64>, LayerGradients) {
+    ) -> (Array2<f32>, LayerGradients) {
         let grad_input = match &cache.mask {
             Some(mask) => grad_output * mask * (1.0 / (1.0 - self.drop_probability)),
             None => grad_output.clone(),

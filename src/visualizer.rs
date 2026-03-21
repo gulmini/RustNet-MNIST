@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use colored::Colorize;
 
 pub fn visualize_image(image: &[u8], rows: usize, cols: usize) {

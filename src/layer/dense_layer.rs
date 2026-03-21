@@ -6,19 +6,20 @@ use ndarray::{Array1, Array2, Axis};
 pub struct DenseLayer {
     input_size: usize,
     output_size: usize,
-    weights: Array2<f64>,
-    biases: Array1<f64>,
+    weights: Array2<f32>,
+    biases: Array1<f32>,
+    l2_lambda: Option<f32>,
 }
 
 pub struct DenseCache {
-    input: Array2<f64>,
+    input: Array2<f32>,
 }
 
 impl DenseLayer {
     pub fn new_random(input_size: usize, output_size: usize) -> Self {
-        let limit = (6.0 / input_size as f64).sqrt();
+        let limit = (6.0 / input_size as f32).sqrt();
         let weights = Array2::from_shape_fn((input_size, output_size), |_| {
-            (rand::random::<f64>() * 2.0 - 1.0) * limit
+            (rand::random::<f32>() * 2.0 - 1.0) * limit
         });
         let biases = Array1::zeros(output_size);
 
@@ -27,7 +28,13 @@ impl DenseLayer {
             output_size,
             weights,
             biases,
+            l2_lambda: None, // Default to no L2 regularization
         }
+    }
+
+    pub fn with_l2(mut self, lambda: f32) -> Self {
+        self.l2_lambda = Some(lambda);
+        self
     }
 
     pub fn input_size(&self) -> usize {
@@ -38,11 +45,11 @@ impl DenseLayer {
         self.output_size
     }
 
-    pub fn forward(&self, input: &Array2<f64>) -> Array2<f64> {
+    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         input.dot(&self.weights) + &self.biases
     }
 
-    pub fn forward_training(&self, input: &Array2<f64>) -> (Array2<f64>, DenseCache) {
+    pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, DenseCache) {
         let output = self.forward(input);
         (
             output,
@@ -54,12 +61,16 @@ impl DenseLayer {
 
     pub fn backward(
         &self,
-        grad_output: &Array2<f64>,
+        grad_output: &Array2<f32>,
         cache: &DenseCache,
-    ) -> (Array2<f64>, LayerGradients) {
+    ) -> (Array2<f32>, LayerGradients) {
         let grad_input = grad_output.dot(&self.weights.t());
-        let grad_weights = cache.input.t().dot(grad_output);
+        let mut grad_weights = cache.input.t().dot(grad_output);
         let grad_biases = grad_output.sum_axis(Axis(0));
+
+        if let Some(lambda) = self.l2_lambda {
+            grad_weights = grad_weights + &self.weights * lambda;
+        }
 
         (
             grad_input,
@@ -70,13 +81,24 @@ impl DenseLayer {
         )
     }
 
+    // Helper to calculate the L2 penalty for loss reporting
+    pub fn l2_loss(&self) -> f32 {
+        if let Some(lambda) = self.l2_lambda {
+            // L2 Loss is (lambda / 2) * sum(w^2)
+            0.5 * lambda * self.weights.iter().map(|w| w * w).sum::<f32>()
+        } else {
+            0.0
+        }
+    }
+
     pub fn apply_gradients(
         &mut self,
-        w_grad: &Array2<f64>,
-        b_grad: &Array1<f64>,
+        layer_id: usize,
+        w_grad: &Array2<f32>,
+        b_grad: &Array1<f32>,
         optimizer: &mut dyn Optimizer,
     ) {
-        optimizer.update_weights(&mut self.weights, w_grad);
-        optimizer.update_biases(&mut self.biases, b_grad);
+        optimizer.update_weights(layer_id, &mut self.weights, w_grad);
+        optimizer.update_biases(layer_id, &mut self.biases, b_grad);
     }
 }

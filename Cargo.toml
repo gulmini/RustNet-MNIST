@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+blas-src = { version = "0.14.0", features = ["openblas"] }
 colored = "3.1.1"
-ndarray = "0.17.2"
+ndarray = { version = "0.17.2", features = ["rayon", "blas"] }
 ndarray-rand = "0.16.0"
 ndarray-stats = "0.7.0"
 rand = "0.10.0"
 rand_distr = "0.6.0"
+rayon = "1.11.0"
