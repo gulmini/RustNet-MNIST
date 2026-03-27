@@ -1,15 +1,17 @@
 #![allow(dead_code)]
 use crate::layer::LayerGradients;
 use ndarray::parallel::prelude::*;
-use ndarray::{Array2, Zip}; // Import Rayon
+use ndarray::{Array2, Zip};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Activation {
     ReLU,
     LeakyReLU,
     Identity,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct ActivationLayer {
     pub activation: Activation,
 }

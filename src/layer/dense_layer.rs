@@ -1,13 +1,14 @@
 use crate::layer::LayerGradients;
-use crate::optimizer::Optimizer;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2, Axis, Zip};
+use ndarray_rand::{RandomExt, rand_distr::Uniform};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct DenseLayer {
     input_size: usize,
     output_size: usize,
-    weights: Array2<f32>,
-    biases: Array1<f32>,
+    pub weights: Array2<f32>,
+    pub biases: Array1<f32>,
     l2_lambda: Option<f32>,
 }
 
@@ -18,9 +19,10 @@ pub struct DenseCache {
 impl DenseLayer {
     pub fn new_random(input_size: usize, output_size: usize) -> Self {
         let limit = (6.0 / input_size as f32).sqrt();
-        let weights = Array2::from_shape_fn((input_size, output_size), |_| {
-            (rand::random::<f32>() * 2.0 - 1.0) * limit
-        });
+        let weights = Array2::random(
+            (input_size, output_size),
+            Uniform::new(-limit, limit).unwrap(),
+        );
         let biases = Array1::zeros(output_size);
 
         Self {
@@ -28,7 +30,7 @@ impl DenseLayer {
             output_size,
             weights,
             biases,
-            l2_lambda: None, // Default to no L2 regularization
+            l2_lambda: None,
         }
     }
 
@@ -69,7 +71,11 @@ impl DenseLayer {
         let grad_biases = grad_output.sum_axis(Axis(0));
 
         if let Some(lambda) = self.l2_lambda {
-            grad_weights = grad_weights + &self.weights * lambda;
+            Zip::from(&mut grad_weights)
+                .and(&self.weights)
+                .for_each(|gw, &w| {
+                    *gw += lambda * w;
+                });
         }
 
         (
@@ -81,24 +87,11 @@ impl DenseLayer {
         )
     }
 
-    // Helper to calculate the L2 penalty for loss reporting
     pub fn l2_loss(&self) -> f32 {
         if let Some(lambda) = self.l2_lambda {
-            // L2 Loss is (lambda / 2) * sum(w^2)
             0.5 * lambda * self.weights.iter().map(|w| w * w).sum::<f32>()
         } else {
             0.0
         }
-    }
-
-    pub fn apply_gradients(
-        &mut self,
-        layer_id: usize,
-        w_grad: &Array2<f32>,
-        b_grad: &Array1<f32>,
-        optimizer: &mut dyn Optimizer,
-    ) {
-        optimizer.update_weights(layer_id, &mut self.weights, w_grad);
-        optimizer.update_biases(layer_id, &mut self.biases, b_grad);
     }
 }

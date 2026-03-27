@@ -1,9 +1,10 @@
 use crate::layer::LayerGradients;
-use ndarray::Array2;
+use ndarray::{Array2, Zip};
 use ndarray_rand::{RandomExt, rand_distr};
 use rand_distr::Bernoulli;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DropoutLayer {
     drop_probability: f32,
 }
@@ -34,10 +35,13 @@ impl DropoutLayer {
         let scale = 1.0 / keep_prob;
         let dist = Bernoulli::new(keep_prob.into()).unwrap();
 
-        // Vectorized boolean mask generation directly translated to f32 mask map
         let mask = Array2::random(input.raw_dim(), dist).mapv(|b| if b { 1.0 } else { 0.0 });
+        let mut output = input.clone();
 
-        let output = input * &mask * scale;
+        Zip::from(&mut output)
+            .and(&mask)
+            .for_each(|out, &m| *out *= m * scale);
+
         (output, DropoutCache { mask: Some(mask) })
     }
 

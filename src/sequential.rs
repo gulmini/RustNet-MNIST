@@ -1,7 +1,11 @@
+use crate::inspector::LayerInspector;
 use crate::layer::{Layer, LayerCache, LayerGradients};
 use crate::optimizer::Optimizer;
-use ndarray::Array2;
 
+use ndarray::Array2;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct Sequential {
     layers: Vec<Layer>,
 }
@@ -12,11 +16,8 @@ impl Sequential {
     }
 
     pub fn add(&mut self, layer: Layer) {
-        // If the new layer has a specific input size requirement...
         if let Some(new_input_size) = layer.input_size() {
-            // Find the output size of the most recently added layer that has a fixed output size
             let last_output_size = self.layers.iter().rev().find_map(|l| l.output_size());
-
             if let Some(expected_size) = last_output_size {
                 assert_eq!(
                     expected_size, new_input_size,
@@ -25,7 +26,6 @@ impl Sequential {
                 );
             }
         }
-
         self.layers.push(layer);
     }
 
@@ -69,13 +69,36 @@ impl Sequential {
     pub fn apply_gradients(&mut self, gradients: &[LayerGradients], optimizer: &mut dyn Optimizer) {
         optimizer.step();
 
-        // Enumerate provides stable `layer_id`
-        for (layer_id, (layer, grad)) in self.layers.iter_mut().zip(gradients.iter()).enumerate() {
-            layer.apply_gradients(layer_id, grad, optimizer);
+        let mut weights = Vec::new();
+        let mut biases = Vec::new();
+        let mut weight_grads = Vec::new();
+        let mut bias_grads = Vec::new();
+
+        for (layer, grad) in self.layers.iter_mut().zip(gradients.iter()) {
+            if let Some((w, b)) = layer.get_params_mut() {
+                if let LayerGradients::Dense {
+                    weights: gw,
+                    biases: gb,
+                } = grad
+                {
+                    weights.push(w);
+                    biases.push(b);
+                    weight_grads.push(gw);
+                    bias_grads.push(gb);
+                }
+            }
         }
+
+        optimizer.apply(weights, biases, weight_grads, bias_grads);
     }
 
     pub fn l2_loss(&self) -> f32 {
         self.layers.iter().map(|layer| layer.l2_loss()).sum()
+    }
+
+    pub fn accept(&self, inspector: &mut dyn LayerInspector) {
+        for (i, layer) in self.layers.iter().enumerate() {
+            layer.accept_inspection(i, inspector);
+        }
     }
 }

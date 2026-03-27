@@ -2,9 +2,12 @@ pub mod activation_layer;
 pub mod dense_layer;
 pub mod dropout_layer;
 
-use crate::optimizer::Optimizer;
 use ndarray::{Array1, Array2};
+use serde::{Deserialize, Serialize};
 
+use crate::inspector::LayerInspector;
+
+#[derive(Serialize, Deserialize)]
 pub enum Layer {
     Dense(dense_layer::DenseLayer),
     Activation(activation_layer::ActivationLayer),
@@ -29,7 +32,7 @@ impl Layer {
     pub fn input_size(&self) -> Option<usize> {
         match self {
             Layer::Dense(l) => Some(l.input_size()),
-            _ => None, // Activation and Dropout conform to their input shape
+            _ => None,
         }
     }
 
@@ -78,21 +81,25 @@ impl Layer {
         }
     }
 
-    pub fn apply_gradients(
-        &mut self,
-        layer_id: usize,
-        gradients: &LayerGradients,
-        optimizer: &mut dyn Optimizer,
-    ) {
-        if let (Layer::Dense(l), LayerGradients::Dense { weights, biases }) = (self, gradients) {
-            l.apply_gradients(layer_id, weights, biases, optimizer);
+    pub fn get_params_mut(&mut self) -> Option<(&mut Array2<f32>, &mut Array1<f32>)> {
+        match self {
+            Layer::Dense(l) => Some((&mut l.weights, &mut l.biases)),
+            _ => None,
         }
     }
 
     pub fn l2_loss(&self) -> f32 {
         match self {
             Layer::Dense(l) => l.l2_loss(),
-            _ => 0.0, // Activations and Dropout don't have L2 loss
+            _ => 0.0,
+        }
+    }
+
+    pub fn accept_inspection(&self, index: usize, inspector: &mut dyn LayerInspector) {
+        match self {
+            Layer::Dense(l) => inspector.inspect_dense(index, l),
+            Layer::Activation(l) => inspector.inspect_activation(index, l),
+            Layer::Dropout(_) => {} // skip or add visit_dropout
         }
     }
 }
