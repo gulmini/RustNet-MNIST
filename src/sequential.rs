@@ -96,9 +96,10 @@ impl Sequential {
         self.layers.iter().map(|layer| layer.l2_loss()).sum()
     }
 
-    pub fn accept(&self, inspector: &mut dyn LayerInspector) {
+    pub fn accept(&self, inspector: &dyn LayerInspector) -> Result<(), Box<dyn std::error::Error>> {
         for (i, layer) in self.layers.iter().enumerate() {
-            layer.accept_inspection(i, inspector);
+            layer.accept_inspection(i, inspector)?;
         }
+        Ok(())
     }
 }

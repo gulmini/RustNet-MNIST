@@ -139,13 +139,13 @@ fn analyze() -> Result<(), Box<dyn std::error::Error>> {
     let loaded_bytes = fs::read("model.postcard")?;
     let model: Sequential = postcard::from_bytes(&loaded_bytes)?;
 
-    model.accept(&mut inspector::WeightInspector);
-
+    model.accept(&inspector::WeightDistributionInspector)?;
+    model.accept(&inspector::HeatMapInspector)?;
     Ok(())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    train()?;
+    // train()?;
 
     analyze()?;
 

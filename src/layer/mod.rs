@@ -95,11 +95,15 @@ impl Layer {
         }
     }
 
-    pub fn accept_inspection(&self, index: usize, inspector: &mut dyn LayerInspector) {
+    pub fn accept_inspection(
+        &self,
+        index: usize,
+        inspector: &dyn LayerInspector,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match self {
             Layer::Dense(l) => inspector.inspect_dense(index, l),
             Layer::Activation(l) => inspector.inspect_activation(index, l),
-            Layer::Dropout(_) => {} // skip or add visit_dropout
+            Layer::Dropout(_) => Ok(()), // skip or add visit_dropout
         }
     }
 }
