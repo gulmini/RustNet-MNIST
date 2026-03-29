@@ -43,7 +43,7 @@ impl Layer {
         }
     }
 
-    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
+    pub fn forward(&self, input: Array2<f32>) -> Array2<f32> {
         match self {
             Layer::Dense(l) => l.forward(input),
             Layer::Activation(l) => l.forward(input),
@@ -83,7 +83,7 @@ impl Layer {
 
     pub fn get_params_mut(&mut self) -> Option<(&mut Array2<f32>, &mut Array1<f32>)> {
         match self {
-            Layer::Dense(l) => Some((&mut l.weights, &mut l.biases)),
+            Layer::Dense(l) => Some((l.weights.raw_mut(), l.biases.raw_mut())),
             _ => None,
         }
     }

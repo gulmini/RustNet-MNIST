@@ -32,7 +32,7 @@ impl Sequential {
     pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
         self.layers
             .iter()
-            .fold(input.to_owned(), |acc, layer| layer.forward(&acc))
+            .fold(input.clone(), |acc, layer| layer.forward(acc))
     }
 
     pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, Vec<LayerCache>) {

@@ -25,24 +25,22 @@ impl ActivationLayer {
         Self { activation }
     }
 
-    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
+    pub fn forward(&self, mut input: Array2<f32>) -> Array2<f32> {
         match self.activation {
             Activation::ReLU => {
-                let mut output = input.clone();
-                output.par_mapv_inplace(|x| x.max(0.0));
-                output
+                input.par_mapv_inplace(|x| x.max(0.0));
+                input
             }
             Activation::LeakyReLU => {
-                let mut output = input.clone();
-                output.par_mapv_inplace(|x| if x > 0.0 { x } else { 0.01 * x });
-                output
+                input.par_mapv_inplace(|x| if x > 0.0 { x } else { 0.01 * x });
+                input
             }
-            Activation::Identity => input.clone(),
+            Activation::Identity => input,
         }
     }
 
     pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, ActivationCache) {
-        let output = self.forward(input);
+        let output = self.forward(input.clone());
         (
             output,
             ActivationCache {

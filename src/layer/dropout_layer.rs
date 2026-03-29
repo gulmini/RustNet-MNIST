@@ -22,8 +22,8 @@ impl DropoutLayer {
         Self { drop_probability }
     }
 
-    pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
-        input.clone()
+    pub fn forward(&self, input: Array2<f32>) -> Array2<f32> {
+        input
     }
 
     pub fn forward_training(&self, input: &Array2<f32>) -> (Array2<f32>, DropoutCache) {

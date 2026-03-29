@@ -20,7 +20,7 @@ use loss::cross_entropy_with_logits;
 
 use crate::optimizer::Adam;
 use crate::sequential::Sequential;
-use blas_src as _;
+// use blas_src as _;
 
 fn train() -> Result<(), Box<dyn std::error::Error>> {
     let training_data = MnistDataset::load(
@@ -36,22 +36,28 @@ fn train() -> Result<(), Box<dyn std::error::Error>> {
     println!("Training data loaded");
 
     let mut model = sequential::Sequential::new();
+    let quantization_bits = 1;
 
-    model.add(Layer::Dense(DenseLayer::new_random(784, 1024)));
+    model.add(Layer::Dense(
+        DenseLayer::new_random(784, 512).with_quantization(quantization_bits),
+    ));
     model.add(Layer::Activation(ActivationLayer::new(Activation::ReLU)));
     // model.add(Layer::Dropout(DropoutLayer::new(0.1)));
 
-    model.add(Layer::Dense(DenseLayer::new_random(1024, 512)));
+    model.add(Layer::Dense(
+        DenseLayer::new_random(512, 256).with_quantization(quantization_bits),
+    ));
     model.add(Layer::Activation(ActivationLayer::new(Activation::ReLU)));
     model.add(Layer::Dropout(DropoutLayer::new(0.2)));
 
-    model.add(Layer::Dense(DenseLayer::new_random(512, 10)));
+    model.add(Layer::Dense(
+        DenseLayer::new_random(256, 10).with_quantization(quantization_bits),
+    ));
 
-    let epochs = 10;
+    let epochs = 30;
     let batch_size = 64;
     let mut optimizer = Adam::new(0.001);
-    let smoothing = 0.05;
-
+    let smoothing = 0.0;
     let n_samples = training_data.images.nrows();
     let mut indices: Vec<usize> = (0..n_samples).collect();
 
@@ -89,7 +95,7 @@ fn train() -> Result<(), Box<dyn std::error::Error>> {
         let mut total_test_loss = 0.0;
         let mut misclassifications = 0;
         let n_test = test_data.images.nrows();
-        let test_batch_size = 256;
+        let test_batch_size = 512;
         let test_chunks = (n_test as f32 / test_batch_size as f32).ceil() as usize;
 
         for start in (0..n_test).step_by(test_batch_size) {
@@ -145,7 +151,7 @@ fn analyze() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // train()?;
+    train()?;
 
     analyze()?;
 

@@ -27,14 +27,11 @@ impl LayerInspector for WeightDistributionInspector {
         index: usize,
         layer: &DenseLayer,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // let min = *layer.weights.min()?;
-        // let max = *layer.weights.max()?;
-
-        let data: Vec<f32> = layer.weights.iter().copied().collect();
+        let data: Vec<f32> = layer.get_effective_weights().iter().copied().collect();
 
         let filename = format!("visualizations/layer_{}_weight_distribution.svg", index);
-        let drawing_area = SVGBackend::new(&filename, (1080, 768)).into_drawing_area();
-        drawing_area.fill(&WHITE).unwrap();
+        let drawing_area = SVGBackend::new(&filename, (1366, 768)).into_drawing_area();
+        drawing_area.fill(&WHITE)?;
 
         let mut chart_builder = ChartBuilder::on(&drawing_area);
         chart_builder
@@ -42,19 +39,17 @@ impl LayerInspector for WeightDistributionInspector {
             .set_left_and_bottom_label_area_size(50);
 
         let mut chart_context = chart_builder
-            .build_cartesian_2d((-0.5..0.5f32).step(0.01).use_round(), 0f32..0.1f32)
-            .unwrap();
-        chart_context.configure_mesh().draw().unwrap();
+            .build_cartesian_2d((-0.5f32..0.5f32).step(0.01f32).use_round(), 0f32..0.1f32)?;
+
+        chart_context.configure_mesh().draw()?;
 
         let unit: f32 = 1f32 / data.len() as f32;
-        chart_context
-            .draw_series(
-                Histogram::vertical(&chart_context)
-                    .style(BLUE.filled())
-                    .margin(1)
-                    .data(data.into_iter().map(|x| (x, unit))),
-            )
-            .unwrap();
+        chart_context.draw_series(
+            Histogram::vertical(&chart_context)
+                .style(BLUE.filled())
+                .margin(1)
+                .data(data.into_iter().map(|x| (x, unit))),
+        )?;
 
         println!("Exported weight distribution to {}", filename);
         Ok(())
@@ -69,12 +64,12 @@ impl LayerInspector for HeatMapInspector {
         index: usize,
         layer: &DenseLayer,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if index != 0 || layer.weights.nrows() != 784 {
+        if index != 0 || layer.weights.raw().nrows() != 784 {
             return Ok(());
         }
 
         let mut norms = Vec::with_capacity(784);
-        for row in layer.weights.rows() {
+        for row in layer.weights.raw().rows() {
             let norm = row.iter().map(|&x| x * x).sum::<f32>().sqrt();
             norms.push(norm);
         }
@@ -88,7 +83,6 @@ impl LayerInspector for HeatMapInspector {
         drawing_area.fill(&WHITE).unwrap();
 
         let mut chart = ChartBuilder::on(&drawing_area)
-            .margin(20)
             .build_cartesian_2d(0usize..28usize, 28usize..0usize)
             .unwrap();
 
